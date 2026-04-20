@@ -1,16 +1,24 @@
-# Anything Analyzer v3.3.7
+# Anything Analyzer v3.4.0
+
+## 新功能
+
+- **AI 请求日志查看器** — 新增 AI Request Log 模块，记录所有 LLM API 调用的完整 HTTP 请求/响应数据，帮助调试 AI 分析和追问过程中的网络问题
+  - 在 Report 工具栏点击「📋 AI 请求日志」即可进入日志视图
+  - 左右分栏布局：左侧为日志列表（支持类型过滤和搜索），右侧为详情面板
+  - 详情面板提供 Request Body / Response Body / Headers / Meta 四个子 Tab
+  - 支持 Session 级别和全局级别两种查看模式
+  - API Key 自动脱敏，敏感信息不会明文存储
+  - 记录请求耗时、Token 用量、HTTP 状态码和错误信息
 
 ## Bug 修复
 
-- **修复追问时 FOREIGN KEY 约束错误** — AI Report 追问期间，若用户切换或删除 Session，LLM 响应后持久化消息会因 report 被级联删除而报错。现在通过 `activeChatReports` 机制保护正在追问的 report 不被删除，确保追问消息正常持久化
-- **修复第三方 LLM 中转站兼容性** — 针对非标准 API 供应商（中转/代理站）返回 HTML 错误页、非标准 JSON 格式等情况，增加安全 JSON 解析和响应结构验证，避免 `Unexpected token '<'` 和 `Cannot read properties of undefined` 等崩溃，改为显示清晰的错误信息
-- **修复 LLM 错误信息双重包装** — HTTP 错误（如 404）不再被网络诊断函数二次包装，错误提示更简洁准确
+- **修复追问不遵循 apiType 配置** — 当用户全局设置 `apiType: "responses"`（OpenAI Responses API）时，追问（含 tool calling）仍错误使用 `/chat/completions` 端点。现已正确路由，新增 `agenticLoopResponses` 方法支持 Responses API 的工具调用协议
 
 ## 下载
 
 | 平台 | 文件 |
 |------|------|
-| Windows | `Anything-Analyzer-Setup-3.3.7.exe` |
-| macOS (Apple Silicon) | `Anything-Analyzer-3.3.7-arm64.dmg` |
-| macOS (Intel) | `Anything-Analyzer-3.3.7-x64.dmg` |
-| Linux | `Anything-Analyzer-3.3.7.AppImage` |
+| Windows | `Anything-Analyzer-Setup-3.4.0.exe` |
+| macOS (Apple Silicon) | `Anything-Analyzer-3.4.0-arm64.dmg` |
+| macOS (Intel) | `Anything-Analyzer-3.4.0-x64.dmg` |
+| Linux | `Anything-Analyzer-3.4.0.AppImage` |
