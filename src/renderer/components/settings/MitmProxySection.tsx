@@ -220,11 +220,35 @@ export default function MitmProxySection() {
                   fontSize: 'var(--font-size-sm)',
                   fontFamily: 'var(--font-mono)',
                 }}>
-                  http://localhost:{mitmPort}
+                  http://&lt;本机IP&gt;:{mitmPort}
                 </code>
               </div>
             </div>
           )}
+
+          {/* Mobile cert download hint */}
+          <div style={{
+            marginTop: 4,
+            padding: '8px 12px',
+            background: 'var(--color-info-bg, rgba(59,130,246,0.08))',
+            border: '1px solid var(--color-info-border, rgba(59,130,246,0.2))',
+            borderRadius: 4,
+            fontSize: 'var(--font-size-sm)',
+            color: 'var(--text-secondary)',
+            lineHeight: 1.6,
+          }}>
+            📱 手机安装证书：连接代理后，用浏览器访问{' '}
+            <code style={{
+              background: 'var(--color-surface)',
+              padding: '1px 5px',
+              borderRadius: 3,
+              fontFamily: 'var(--font-mono)',
+              fontSize: 'var(--font-size-sm)',
+              userSelect: 'all',
+            }}>
+              http://cert.anything.local
+            </code>
+          </div>
         </>
       )}
 

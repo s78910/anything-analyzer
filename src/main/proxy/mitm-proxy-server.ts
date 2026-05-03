@@ -13,6 +13,7 @@ import { v4 as uuidv4 } from "uuid";
 import { SocksClient } from "socks";
 import type { CaManager } from "./ca-manager";
 import type { ProxyConfig } from "../../shared/types";
+import { CERT_DOWNLOAD_HOST, generateCertPage, getCertFileContent } from "./cert-download-page";
 
 const MAX_BODY_SIZE = 1024 * 1024; // 1MB — same limit as CdpManager
 const BINARY_CONTENT_TYPES = [
@@ -387,6 +388,13 @@ export class MitmProxyServer extends EventEmitter {
     clientReq: http.IncomingMessage,
     clientRes: http.ServerResponse,
   ): void {
+    // Intercept cert download page requests
+    const host = (clientReq.headers.host || "").split(":")[0];
+    if (host === CERT_DOWNLOAD_HOST) {
+      this.serveCertPage(clientReq, clientRes);
+      return;
+    }
+
     const startTime = Date.now();
     const requestId = `proxy-${uuidv4()}`;
 
@@ -965,5 +973,46 @@ export class MitmProxyServer extends EventEmitter {
       serverSocket.on("error", () => clientSocket.destroy());
       clientSocket.on("error", () => serverSocket.destroy());
     }
+  }
+
+  // ---- Certificate download page ----
+
+  /**
+   * Serve the certificate download page or the certificate file itself
+   * when a client accesses the magic hostname (cert.anything.local).
+   */
+  private serveCertPage(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ): void {
+    const reqPath = url.parse(req.url || "/").pathname || "/";
+
+    if (reqPath === "/cert.crt" || reqPath === "/cert.pem" || reqPath === "/cert.cer") {
+      // Serve the CA certificate file for download
+      try {
+        const certContent = getCertFileContent(this.caManager);
+        res.writeHead(200, {
+          "Content-Type": "application/x-x509-ca-cert",
+          "Content-Disposition": "attachment; filename=\"anything-analyzer-ca.crt\"",
+          "Content-Length": certContent.length,
+          "Cache-Control": "no-cache",
+        });
+        res.end(certContent);
+      } catch (err) {
+        console.error("[MitmProxy] Failed to read CA cert:", err);
+        res.writeHead(500);
+        res.end("CA certificate not available. Please initialize the proxy first.");
+      }
+      return;
+    }
+
+    // Serve the HTML download page
+    const ua = req.headers["user-agent"] || "";
+    const html = generateCertPage(ua);
+    res.writeHead(200, {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-cache",
+    });
+    res.end(html);
   }
 }
