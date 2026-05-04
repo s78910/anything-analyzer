@@ -6,6 +6,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import type { AnalysisReport, ChatMessage, CapturedRequest, JsHookRecord } from '@shared/types'
+import { stripToolContext } from '@shared/types'
 import { AiLogView } from './AiLogView'
 import styles from './ReportView.module.css'
 
@@ -128,12 +129,22 @@ const ReportView: React.FC<ReportViewProps> = ({
   const [showAiLog, setShowAiLog] = useState(false)
   const reportBodyRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll report body when streaming
+  // Auto-scroll report body when streaming or new chat messages arrive
   useEffect(() => {
-    if (streamingContent && reportBodyRef.current) {
+    if ((streamingContent || isChatting) && reportBodyRef.current) {
       reportBodyRef.current.scrollTop = reportBodyRef.current.scrollHeight
     }
-  }, [streamingContent])
+  }, [streamingContent, isChatting])
+
+  useEffect(() => {
+    if (chatHistory.length > 2 && reportBodyRef.current) {
+      requestAnimationFrame(() => {
+        if (reportBodyRef.current) {
+          reportBodyRef.current.scrollTop = reportBodyRef.current.scrollHeight
+        }
+      })
+    }
+  }, [chatHistory.length])
 
   const handleSend = () => {
     const trimmed = chatInput.trim()
@@ -151,7 +162,7 @@ const ReportView: React.FC<ReportViewProps> = ({
       content += '\n\n---\n\n## Follow-up Chat\n'
       for (const msg of followUps) {
         const label = msg.role === 'user' ? '**User**' : '**AI**'
-        content += `\n${label}:\n\n${msg.content}\n`
+        content += `\n${label}:\n\n${stripToolContext(msg.content)}\n`
       }
     }
     await window.electronAPI.exportFile(defaultName, content)
@@ -337,7 +348,7 @@ const ReportView: React.FC<ReportViewProps> = ({
                 </Tag>
                 <div className="report-markdown-content">
                   <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-                    {msg.content}
+                    {stripToolContext(msg.content)}
                   </ReactMarkdown>
                 </div>
               </div>

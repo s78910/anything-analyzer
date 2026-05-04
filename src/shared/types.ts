@@ -163,6 +163,14 @@ export interface ChatMessage {
   content: string;
 }
 
+/**
+ * 从 assistant 消息内容中移除 <tool_context> 块（用于前端显示）。
+ * LLM 对话历史中保留该块以维持工具交互上下文。
+ */
+export function stripToolContext(content: string): string {
+  return content.replace(/\n*<tool_context>[\s\S]*?<\/tool_context>\s*$/g, '');
+}
+
 // ---- Browser Tab ----
 
 export interface BrowserTab {
@@ -170,6 +178,7 @@ export interface BrowserTab {
   url: string;
   title: string;
   isActive: boolean;
+  isLoading?: boolean;
 }
 
 // ---- Auto Update ----
@@ -284,6 +293,68 @@ export interface MitmProxyStatus {
   caInstalled: boolean;
   caCertPath: string | null;
   systemProxyEnabled: boolean;
+}
+
+// ---- Interaction Recording ----
+
+export type InteractionType = 'click' | 'dblclick' | 'input' | 'scroll' | 'navigate' | 'hover';
+
+export interface InteractionEvent {
+  id: number;
+  session_id: string;
+  sequence: number;
+  type: InteractionType;
+  timestamp: number;
+  // Position
+  x: number | null;
+  y: number | null;
+  viewport_x: number | null;
+  viewport_y: number | null;
+  // Element
+  selector: string | null;
+  xpath: string | null;
+  tag_name: string | null;
+  element_text: string | null;
+  attributes: string | null;    // JSON
+  bounding_rect: string | null; // JSON
+  // Input
+  input_value: string | null;
+  key: string | null;
+  // Scroll
+  scroll_x: number | null;
+  scroll_y: number | null;
+  scroll_dx: number | null;
+  scroll_dy: number | null;
+  // Context
+  url: string;
+  page_title: string | null;
+  path: string | null;          // JSON: mouse move path [{x, y, t}...]
+  created_at: number;
+}
+
+/** Raw interaction data sent from page injection script to main process */
+export interface RawInteractionData {
+  type: InteractionType;
+  timestamp: number;
+  x?: number;
+  y?: number;
+  viewportX?: number;
+  viewportY?: number;
+  selector?: string;
+  xpath?: string;
+  tagName?: string;
+  elementText?: string;
+  attributes?: Record<string, string>;
+  boundingRect?: { x: number; y: number; width: number; height: number };
+  inputValue?: string;
+  key?: string;
+  scrollX?: number;
+  scrollY?: number;
+  scrollDX?: number;
+  scrollDY?: number;
+  url: string;
+  pageTitle?: string;
+  path?: Array<{ x: number; y: number; t: number }>;
 }
 
 // ---- Fingerprint Profile ----
@@ -503,6 +574,7 @@ export interface ElectronAPI {
   reload: () => Promise<void>;
   setBrowserRatio: (ratio: number) => Promise<void>;
   setTargetViewVisible: (visible: boolean) => Promise<void>;
+  toggleDevTools: () => Promise<void>;
   exportFile: (defaultName: string, content: string) => Promise<boolean>;
   openExternal: (url: string) => Promise<void>;
 
@@ -540,7 +612,7 @@ export interface ElectronAPI {
     callback: (data: { tabId: string; url: string; title: string }) => void,
   ) => void;
   onTabUpdated: (
-    callback: (data: { tabId: string; url?: string; title?: string }) => void,
+    callback: (data: { tabId: string; url?: string; title?: string; isLoading?: boolean }) => void,
   ) => void;
 
   onRequestCaptured: (callback: (data: CapturedRequest) => void) => void;
@@ -603,6 +675,17 @@ export interface ElectronAPI {
   regenerateFingerprintProfile: (sessionId: string) => Promise<FingerprintProfile>;
   enableFingerprint: (sessionId: string) => Promise<void>;
   disableFingerprint: () => Promise<void>;
+
+  // Interaction Recording
+  getInteractions: (sessionId: string, limit?: number) => Promise<InteractionEvent[]>;
+  getInteractionCount: (sessionId: string) => Promise<number>;
+  clearInteractions: (sessionId: string) => Promise<void>;
+  onInteractionRecorded: (callback: (data: { type: string; sequence: number; timestamp: number }) => void) => void;
+
+  // Log files
+  getLogPath: () => Promise<string>;
+  openLogFolder: () => Promise<void>;
+  exportLogs: () => Promise<boolean>;
 }
 
 declare global {

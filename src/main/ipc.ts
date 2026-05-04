@@ -1,4 +1,4 @@
-import { ipcMain, dialog, app, session } from "electron";
+import { ipcMain, dialog, app, session, shell } from "electron";
 import type { LLMProviderConfig, MCPServerConfig, MCPServerSettings, MitmProxyConfig, ProxyConfig, PromptTemplate } from "@shared/types";
 import type { SessionManager } from "./session/session-manager";
 import type { AiAnalyzer } from "./ai/ai-analyzer";
@@ -31,6 +31,7 @@ import type {
   SessionsRepo,
   ChatMessagesRepo,
   AiRequestLogRepo,
+  InteractionEventsRepo,
 } from "./db/repositories";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
@@ -62,6 +63,7 @@ export function registerIpcHandlers(deps: {
   chatMessagesRepo: ChatMessagesRepo;
   profileStore: ProfileStore;
   aiRequestLogRepo: AiRequestLogRepo;
+  interactionEventsRepo: InteractionEventsRepo;
 }): void {
   const {
     sessionManager,
@@ -79,6 +81,7 @@ export function registerIpcHandlers(deps: {
     chatMessagesRepo,
     profileStore,
     aiRequestLogRepo,
+    interactionEventsRepo,
   } = deps;
 
   // ---- Session Management ----
@@ -175,7 +178,8 @@ export function registerIpcHandlers(deps: {
     const elSession = sessionManager.getActiveElectronSession() ?? session.defaultSession;
     await elSession.clearStorageData();
     await elSession.clearCache();
-    windowManager.getTabManager()?.getActiveWebContents()?.reload();
+    const wc = windowManager.getTabManager()?.getActiveWebContents();
+    if (wc && !wc.isDestroyed()) wc.reload();
   });
 
   ipcMain.handle("browser:setRatio", async (_event, ratio: number) => {
@@ -189,6 +193,16 @@ export function registerIpcHandlers(deps: {
 
   ipcMain.handle("browser:setVisible", async (_event, visible: boolean) => {
     windowManager.setTargetViewVisible(visible);
+  });
+
+  ipcMain.handle("browser:toggleDevTools", async () => {
+    const wc = windowManager.getTabManager()?.getActiveWebContents();
+    if (!wc || wc.isDestroyed()) return;
+    if (wc.isDevToolsOpened()) {
+      wc.closeDevTools();
+    } else {
+      wc.openDevTools({ mode: 'detach' });
+    }
   });
 
   // ---- Tab Management ----
@@ -221,6 +235,7 @@ export function registerIpcHandlers(deps: {
       url: t.url,
       title: t.title,
       isActive: t.id === activeTab?.id,
+      isLoading: t.isLoading,
     }));
   });
 
@@ -231,6 +246,7 @@ export function registerIpcHandlers(deps: {
     tabManager.on(
       "tab-created",
       (tabInfo: { id: string; url: string; title: string }) => {
+        if (mainWin.isDestroyed()) return;
         mainWin.webContents.send("tabs:created", {
           id: tabInfo.id,
           url: tabInfo.url,
@@ -240,17 +256,20 @@ export function registerIpcHandlers(deps: {
       },
     );
     tabManager.on("tab-closed", (data: { tabId: string }) => {
+      if (mainWin.isDestroyed()) return;
       mainWin.webContents.send("tabs:closed", data);
     });
     tabManager.on(
       "tab-activated",
       (data: { tabId: string; url: string; title: string }) => {
+        if (mainWin.isDestroyed()) return;
         mainWin.webContents.send("tabs:activated", data);
       },
     );
     tabManager.on(
       "tab-updated",
-      (data: { tabId: string; url?: string; title?: string }) => {
+      (data: { tabId: string; url?: string; title?: string; isLoading?: boolean }) => {
+        if (mainWin.isDestroyed()) return;
         mainWin.webContents.send("tabs:updated", data);
       },
     );
@@ -540,6 +559,18 @@ export function registerIpcHandlers(deps: {
 
   ipcMain.handle("mcp-server:saveConfig", async (_event, config: MCPServerSettings) => {
     saveMCPServerConfig(config);
+
+    const { initMCPServer, stopMCPServer, isMCPServerRunning } = await import("./mcp/mcp-server");
+    if (config.enabled && !isMCPServerRunning()) {
+      await initMCPServer(
+        { sessionManager, aiAnalyzer, windowManager, requestsRepo, jsHooksRepo, storageSnapshotsRepo, reportsRepo, interactionEventsRepo },
+        config.port,
+        config.authEnabled,
+        config.authToken,
+      );
+    } else if (!config.enabled && isMCPServerRunning()) {
+      await stopMCPServer();
+    }
   });
 
   ipcMain.handle("mcp-server:status", async () => {
@@ -682,6 +713,45 @@ export function registerIpcHandlers(deps: {
 
   ipcMain.handle("fingerprint:disable", async () => {
     await sessionManager.disableStealth();
+  });
+
+  // ---- Interaction Recording ----
+
+  ipcMain.handle("interaction:getEvents", async (_event, sessionId: string, limit?: number) => {
+    return interactionEventsRepo.findBySession(sessionId, limit ?? 1000);
+  });
+
+  ipcMain.handle("interaction:getCount", async (_event, sessionId: string) => {
+    return interactionEventsRepo.count(sessionId);
+  });
+
+  ipcMain.handle("interaction:clear", async (_event, sessionId: string) => {
+    interactionEventsRepo.deleteBySession(sessionId);
+  });
+
+  // ---- Log Files ----
+
+  ipcMain.handle("log:getPath", () => {
+    return join(app.getPath("userData"), "logs", "main.log");
+  });
+
+  ipcMain.handle("log:openFolder", async () => {
+    const logDir = join(app.getPath("userData"), "logs");
+    shell.openPath(logDir);
+  });
+
+  ipcMain.handle("log:export", async () => {
+    const logPath = join(app.getPath("userData"), "logs", "main.log");
+    if (!existsSync(logPath)) return false;
+    const mainWin = windowManager.getMainWindow();
+    const result = await dialog.showSaveDialog(mainWin!, {
+      defaultPath: `anything-analyzer-logs-${new Date().toISOString().slice(0, 10)}.log`,
+      filters: [{ name: "Log Files", extensions: ["log", "txt"] }],
+    });
+    if (result.canceled || !result.filePath) return false;
+    const { copyFileSync } = await import("fs");
+    copyFileSync(logPath, result.filePath);
+    return true;
   });
 }
 

@@ -14,14 +14,16 @@ jobs:
         include:
           - os: windows-latest
             platform: win
-          - os: macos-latest
-            platform: mac-arm64
-            arch: arm64
-          - os: macos-latest
-            platform: mac-x64
             arch: x64
+          - os: macos-latest
+            platform: mac
+            arch: x64
+          - os: macos-latest
+            platform: mac
+            arch: arm64
           - os: ubuntu-latest
             platform: linux
+            arch: x64
 
     runs-on: ${{ matrix.os }}
 
@@ -52,7 +54,9 @@ jobs:
         run: npx electron-builder --win --publish never
 
       - name: Package for macOS
-        if: startsWith(matrix.platform, 'mac')
+        if: matrix.platform == 'mac'
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npx electron-builder --mac --${{ matrix.arch }} --publish never
 
       - name: Package for Linux
@@ -62,7 +66,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: build-${{ matrix.platform }}
+          name: build-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
             dist/*.exe
             dist/*.dmg
